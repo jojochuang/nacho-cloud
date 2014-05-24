@@ -69,7 +69,7 @@ def  remove_metadata( logical_id ):
   uri = boto.storage_uri( configs.bucket + '/' + logical_id + '/executable', GOOGLE_STORAGE)
   uri.delete()
 
-  uri = boto.storage_uri( configs.bucket + '/' + logical_id + '/parameters.default', GOOGLE_STORAGE)
+  uri = boto.storage_uri( configs.bucket + '/' + logical_id + '/param.default', GOOGLE_STORAGE)
   uri.delete()
 
 def read_key():
@@ -122,6 +122,9 @@ def main(argv):
   http = httplib2.Http()
   http = credentials.authorize(http)
 
+
+  # TODO: transfer logs from nodes to cloud storage
+
   instance_names = get_instance_names( flags.id )
 
   service = discovery.build('compute', 'v1', http=http)
@@ -132,6 +135,7 @@ def main(argv):
       request = service.instances().delete(project = configs.project_name, zone= configs.zone, instance= instance_name )
       response = request.execute()
       #req = service.instances().list(project= configs.project_name )
+
 
   except client.AccessTokenRefreshError:
     print ("The credentials have been revoked or expired, please re-run"

@@ -30,6 +30,8 @@ import httplib2
 import os
 import sys
 
+import boto
+
 from apiclient import discovery
 from oauth2client import file
 from oauth2client import client
@@ -67,21 +69,47 @@ FLOW = client.flow_from_clientsecrets(CLIENT_SECRETS,
     ],
     message=tools.message_if_missing(CLIENT_SECRETS))
 
-#class InsertInstanceRequest:
-#  def __init__(self, ):
+GOOGLE_STORAGE = 'gs'
+project_id = configs.project_name #'YOUR_DOMAIN:YOUR_PROJECT'
+header_values = {"x-goog-project-id": project_id}
+def create_bucket( bucket ):
+  try:
+    uri = boto.storage_uri( bucket  , GOOGLE_STORAGE)
+    uri.create_bucket(headers=header_values)
+  except boto.exception.StorageCreateError, e:
+    print 'Failed to create bucket:', e
+
+def store_param_file( bucket, param_file_name ):
+  #try:
+    param_file = open( param_file_name , 'r' )
+    uri = boto.storage_uri( bucket + '/param.default', GOOGLE_STORAGE)
+    uri.new_key().set_contents_from_file( param_file )
+  #except boto.exception.StorageCreateError, e:
+    #print 'Failed to create bucket:', e
+def store_executable( bucket, executable_name ):
+  #try:
+    executable_file = open( executable_name , 'r' )
+    uri = boto.storage_uri( bucket + '/executable', GOOGLE_STORAGE)
+    uri.new_key().set_contents_from_file( executable_file )
+  #except boto.exception.StorageCreateError, e:
+    #print 'Failed to create bucket:', e
 
 
-def main(argv):
-  # Parse the command-line flags.
-  flags = parser.parse_args(argv[1:])
+def store_metadata( logical_id, param_file_name, executable_name ):
+  bucket = "nacho" + str(logical_id)
+  create_bucket( bucket )
+  store_param_file( bucket, param_file_name )
+  store_executable( bucket, executable_name )
 
+def start_logical_node( logical_id):
   # If the credentials don't exist or are invalid run through the native client
   # flow. The Storage object will ensure that if successful the good
   # credentials will get written back to the file.
   storage = file.Storage('sample.dat')
   credentials = storage.get()
   if credentials is None or credentials.invalid:
-    credentials = tools.run_flow(FLOW, storage, flags)
+    credentials = tools.run_flow(FLOW, storage)
+    #credentials = tools.run_flow(FLOW, storage, flags)
 
   # Create an httplib2.Http object to handle our HTTP requests and authorize it
   # with our good Credentials.
@@ -90,7 +118,6 @@ def main(argv):
 
   # Construct the service object for the interacting with the Compute Engine API.
   service = discovery.build('compute', 'v1', http=http)
-
   try:
     #print "Success! Now add code here."
 
@@ -111,10 +138,12 @@ def main(argv):
     upload.upload_logical_node( logical_node, executable_path, parameter_path )
     # supply in the parameter the uri to the executable
     # initially, start an instance as the bootstrapper/ initial leader. ( service.instances().insert() )
-    insert_leader_request = {
-      'name': 'bootstrapper',
-    }
-    service.instances().insert(project= configs.project_name, zone=configs.zone, insert_leader_request)
+    #insert_leader_request = {
+    #  'name': 'bootstrapper',
+    #}
+    #service.instances().insert(project= configs.project_name, zone=configs.zone, insert_leader_request)
+
+
     # assigns a metadata key/value pair so that the instance knows it's the bootstrapper
     # assigns a metadata key/value pair for the parameter file
     # assigns a metadata key/value pair to the uri of the executable and download it
@@ -129,6 +158,24 @@ def main(argv):
   except client.AccessTokenRefreshError:
     print ("The credentials have been revoked or expired, please re-run"
       "the application to re-authorize")
+
+def main(argv):
+  # Parse the command-line flags.
+  parser.add_argument('-p')
+  parser.add_argument('-e')
+  flags = parser.parse_args(argv[1:])
+
+
+  param_file_name = flags.p
+  executable_name = flags.e
+
+
+
+
+  logical_id = 1
+  store_metadata( logical_id, param_file_name, executable_name )
+
+  #start_logical_node( logical_id)
 
 
 # For more information on the Compute Engine API you can visit:
