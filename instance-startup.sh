@@ -10,11 +10,6 @@ if [ $? -ne 0 ]; then
   exit
 fi
 
-#if [ $ROLE == "bootstrapper" ]; then
-#
-#else
-#
-#fi
 
 if [ -e "executable" ]; then
   rm -f executable
@@ -31,4 +26,20 @@ gsutil cp ${BUCKET_PREFIX}"/executable" executable
 gsutil cp ${BUCKET_PREFIX}"/params.default" params.default
 
 chmod a+x executable
-./executable
+# http://stackoverflow.com/questions/3430330/best-way-to-make-a-shell-script-daemon
+# nohup ./myscript 0<&- &>/dev/null &
+# http://wiki.bash-hackers.org/howto/redirection_tutorial
+
+# http://stackoverflow.com/questions/19233529/bash-sript-as-daemon
+# setsid myscript.sh >/dev/null 2>&1 < /dev/null &
+if [ $ROLE == "bootstrapper" ]; then
+  setsid ./executable -lib.MApplication.bootstrapper me &
+else
+  BOOTSTRAPPER=$(curl http://metadata/computeMetadata/v1/instance/attributes/bootstrapper -H "X-Google-Metadata-Request: True")
+  if [ $? -ne 0 ]; then
+    echo "unable to get role metadata"
+    exit
+  fi
+  setsid ./executable lib.MApplication.bootstrapper $BOOTSTRAPPER &
+fi
+#./executable

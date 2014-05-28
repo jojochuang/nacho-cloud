@@ -69,7 +69,7 @@ def  remove_metadata( logical_id ):
   uri = boto.storage_uri( configs.bucket + '/' + logical_id + '/executable', GOOGLE_STORAGE)
   uri.delete()
 
-  uri = boto.storage_uri( configs.bucket + '/' + logical_id + '/param.default', GOOGLE_STORAGE)
+  uri = boto.storage_uri( configs.bucket + '/' + logical_id + '/params.default', GOOGLE_STORAGE)
   uri.delete()
 
 def read_key():

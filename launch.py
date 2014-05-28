@@ -83,7 +83,7 @@ header_values = {"x-goog-project-id": project_id}
 def store_param_file( bucket, param_file_name ):
   try:
     param_file = open( param_file_name , 'r' )
-    uri = boto.storage_uri( bucket + '/param.default', GOOGLE_STORAGE)
+    uri = boto.storage_uri( bucket + '/params.default', GOOGLE_STORAGE)
     uri.new_key().set_contents_from_file( param_file )
   except IOError, e:
       print "can't open the parameter file to read"
@@ -195,7 +195,86 @@ def construct_leader_instance_request(logical_id):
   }
   return request
 
-def start_logical_node( logical_id):
+
+def construct_peer_instance_request(logical_id, leader_address, nid):
+  project = configs.project_name
+  zone = configs.zone
+  name = "nacho-%s-%d" % (logical_id, nid)
+  image_url = '%s%s/global/images/%s' % (
+         GCE_URL, project, DEFAULT_IMAGE )
+  machine_type_url = '%s%s/zones/%s/machineTypes/%s' % (
+        GCE_URL, project, zone, DEFAULT_MACHINE_TYPE)
+  network_url = '%s%s/global/networks/%s' % (GCE_URL, project, DEFAULT_NETWORK)
+
+  diskName = "nacho-%s-%d-disk" % (logical_id, nid )
+  startup_script = "instance-startup.sh"
+  request = {
+    "disks": [
+      {
+        "type": "PERSISTENT",
+        "boot": True,
+        "mode": "READ_WRITE",
+        'initializeParams': {
+          'diskName': diskName,
+          'sourceImage': image_url,
+        },
+        "autoDelete": True
+      }
+    ],
+    "networkInterfaces": [
+      {
+        "network": network_url,
+        "accessConfigs": [
+          {
+            "name": "External NAT",
+            "type": "ONE_TO_ONE_NAT"
+          }
+        ]
+      }
+    ],
+    "metadata": {
+      "items": [
+        {
+          "key": "startup-script",
+            "value": open( startup_script, "r" ).read()
+        },{
+          "key": "role",
+          "value": "peer"
+        },{
+          "key": "logical_id",
+          "value": logical_id
+        },{
+          "key": "bootstrapper",
+          "value": leader_address 
+        }
+      ]
+    },
+    "tags": {
+      "items": []
+    },
+    "zone": "%s%s/zones/%s" % ( GCE_URL, project, zone),
+    "canIpForward": False,
+    "scheduling": {
+      "automaticRestart": True,
+      "onHostMaintenance": "MIGRATE"
+    },
+    "machineType": machine_type_url,
+    "name": name,
+    "serviceAccounts": [
+      {
+        "email": "default",
+        "scopes": [
+          "https://www.googleapis.com/auth/userinfo.email",
+          "https://www.googleapis.com/auth/compute",
+          "https://www.googleapis.com/auth/devstorage.full_control"
+        ]
+      }
+    ]
+  }
+  return request
+
+
+def start_logical_node( logical_id, nsize):
   # If the credentials don't exist or are invalid run through the native client
   # flow. The Storage object will ensure that if successful the good
   # credentials will get written back to the file.
@@ -233,7 +312,22 @@ def start_logical_node( logical_id):
     # 
     # TODO: use libcloud to support more cloud infrastructures
 
-    
+    for n in range( 1, int(nsize)+1 ):
+      print "start peer node %s" % n
+      insert_peer_request = construct_peer_instance_request(logical_id, leader_address, n)
+      request = service.instances().insert(project= configs.project_name, zone=configs.zone, body=insert_peer_request)
+      response = request.execute( http = http )
+
+      #print "request id %s status %s" % (response['id'], response['status'])
+      #print response
+
+      if "error" in response is not None:
+        # an error!
+        print "error is not None"
+        ex = response["error"]
+        errors = ex["errors"]
+        for e in errors:
+          print "error: code %s location %s message %s" % ( e.code, e.location, e.message )
 
   except client.AccessTokenRefreshError:
     print ("The credentials have been revoked or expired, please re-run"
@@ -287,15 +381,17 @@ def main(argv):
   parser.add_argument('-p')
   parser.add_argument('-e')
   parser.add_argument('-l')
+  parser.add_argument('-n')
   flags = parser.parse_args(argv[1:])
 
   param_file_name = flags.p
   executable_name = flags.e
   # TODO: use something to store the counter 
   logical_id = flags.l
+  nsize = flags.n
 
   store_metadata( logical_id, param_file_name, executable_name )
-  start_logical_node( logical_id)
+  start_logical_node( logical_id, nsize)
 
 
 # For more information on the Compute Engine API you can visit:
